@@ -1,0 +1,9 @@
+# YOLO OCR 학습 설정 예시
+# 실제 환경에 맞게 수정하세요.
+model: yolov8n.pt
+imgsz: 1024
+batch: 16
+epochs: 100
+device: cpu
+project: models
+name: yolo_ocr

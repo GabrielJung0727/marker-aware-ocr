@@ -1,0 +1,143 @@
+# Pipeline config
+image: data/raw/12.jpg
+output_json: data/processed/pipeline_output.json
+
+# trace settings (for Streamlit viewer)
+vis_config: configs/vis.yaml
+trace:
+  enabled: true
+  output_dir: artifacts/trace
+
+# OCR settings file
+ocr_config: configs/ocr.yaml
+
+# detection fallback when generic YOLO has no text-like classes
+fallback:
+  enabled: true
+  mode: columns   # full | columns
+  columns: 2
+  rows: 8
+  margin: 8
+
+# OCR crop preprocess
+ocr_preprocess:
+  mode: adaptive  # none | gray | adaptive
+  scale: 1.2
+
+# single model mode
+yolo:
+  use_dual_model: false
+  model: yolov8n.pt
+  conf: 0.25
+  imgsz: 1024
+  device: cpu
+  classes: []
+  max_det: 300
+  crop_padding: 6
+  line_thresh: 0.5
+
+# optional text detector plugins (PaddleOCR/CRAFT)
+text_detection:
+  strategy: yolo_then_plugins   # yolo_only | plugins_only | yolo_then_plugins | merge
+  merge_iou_threshold: 0.5
+  max_boxes: 400
+  plugins:
+    paddle:
+      enabled: true
+      lang: korean
+      use_angle_cls: true
+      use_gpu: false
+      show_log: false
+      min_area: 24
+      iou_threshold: 0.4
+      max_boxes: 400
+    craft:
+      enabled: false
+      cuda: false
+      min_area: 24
+      iou_threshold: 0.4
+      max_boxes: 400
+
+# dual model mode (enabled when yolo.use_dual_model=true)
+yolo_doc:
+  model: models/yolo_doc/weights/best.pt
+  conf: 0.25
+  imgsz: 1280
+  device: cpu
+  max_det: 300
+  crop_padding: 6
+  line_thresh: 0.5
+
+yolo_marker:
+  model: models/yolo_marker/weights/best.pt
+  conf: 0.25
+  imgsz: 1024
+  device: cpu
+  max_det: 300
+  crop_padding: 6
+  line_thresh: 0.5
+
+# fallback inline OCR settings (used only when ocr_config omitted)
+ocr:
+  engine: tesseract
+  ensemble: [tesseract, easyocr]
+  lang: eng
+  psm: 6
+  oem: 1
+
+# marker occlusion strategy
+marker:
+  enabled: true
+  use_masking: true
+  use_inpaint: true
+  inpaint_radius: 3
+  dual_ocr: true
+
+# global red pen cleanup (before OCR)
+red_ink:
+  enabled: true
+  strategy: preserve_text   # preserve_text | inpaint | white_mask
+  use_inpaint: false
+  inpaint_radius: 3
+  morph_kernel: 3
+  keep_dark_threshold: 150
+  saturation_min: 70
+  value_min: 35
+
+# character-level visualization (OpenCV contour + optional Tesseract char boxes)
+char_visualization:
+  enabled: true
+  source: red_removed   # original | red_removed
+  blur_kernel: 3
+  threshold_mode: adaptive   # adaptive | otsu
+  adaptive_block_size: 31
+  adaptive_c: 11
+  min_area: 16
+  max_area_ratio: 0.03
+  min_w: 2
+  min_h: 6
+  max_boxes: 5000
+  line_thresh: 0.6
+  label_limit: 120
+  gallery_limit: 120
+  gallery_columns: 12
+  gallery_tile_width: 64
+  gallery_tile_height: 48
+  tesseract_char_boxes: true
+  tesseract_lang: eng
+  tesseract_psm: 6
+  tesseract_oem: 1
+
+# formula handling
+formula:
+  enabled: true
+  placeholder_prefix: FORMULA
+
+# option parsing
+option:
+  # `option_block` detector를 학습한 뒤 true로 켜세요.
+  enabled: false
+  final_mark_priority: [X, O, V, CHECK, STAR]
+
+ollama:
+  config: configs/ollama.yaml

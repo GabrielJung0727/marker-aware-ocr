@@ -1,0 +1,28 @@
+# OCR engine settings (referenced by configs/pipeline.yaml)
+engine: ensemble   # tesseract | easyocr | trocr | paddleocr | ensemble
+ensemble: [tesseract_kor_eng, easyocr]
+
+lang: kor+eng
+psm: 6
+oem: 1
+tesseract_cmd: C:\\Program Files\\Tesseract-OCR\\tesseract.exe
+
+easyocr_langs: [ko, en]
+easyocr_gpu: false
+
+paddle_lang: korean
+paddle_use_angle_cls: true
+paddle_use_gpu: false
+
+trocr_model: microsoft/trocr-base-handwritten
+trocr_device: cpu
+
+routing:
+  default_engine: tesseract_kor_eng
+  printed_engine: tesseract_eng
+  handwritten_engine: trocr
+  low_conf_engine: ensemble
+  low_conf_threshold: 0.45
+  english_engine: tesseract_eng
+  korean_engine: tesseract_kor
+  mixed_engine: tesseract_kor_eng

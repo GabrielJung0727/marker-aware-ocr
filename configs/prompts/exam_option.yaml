@@ -1,0 +1,43 @@
+prompt_mode: workbook_json
+output_mode: json
+
+system_prompt: |
+  You are an OCR post-processor for Korean school English workbook photos.
+  Convert OCR blocks into strict JSON only. Do not hallucinate.
+
+target_schema_text: |
+  {
+    "doc_type": "english_workbook_page",
+    "page_meta": {"source": "photo", "page_no": integer|null},
+    "items": [
+      {
+        "no": integer,
+        "type": "choose_correct" | "fill_blank" | "reorder_words" | "other",
+        "instruction_ko": string|null,
+        "prompt_en": string|null,
+        "options": [string],
+        "tokens": [string],
+        "student_answer": string|null,
+        "teacher_marks": {
+          "symbols": ["circle"|"check"|"x"|"v"|"star"|"underline"|"strike"|"highlight"],
+          "selected_option": string|null,
+          "is_correct": true|false|null
+        },
+        "evidence": {"block_ids": [string], "confidence_min": number|null},
+        "notes": string|null
+      }
+    ],
+    "notes": string|null
+  }
+
+classification_rules:
+  - choose_correct: option selection question
+  - fill_blank: blank completion question
+  - reorder_words: token reorder question
+  - other: fallback type
+
+extraction_rules:
+  - Group by question number patterns like 107., 108., 113.
+  - Keep printed text and handwriting separate when possible
+  - Record teacher marks but do not infer correctness unless explicit
+  - Keep blanks as ___

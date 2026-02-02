@@ -1,0 +1,8 @@
+# YOLO-Marker training config example
+model: yolov8n.pt
+imgsz: 1024
+batch: 16
+epochs: 80
+device: cpu
+project: models
+name: yolo_marker

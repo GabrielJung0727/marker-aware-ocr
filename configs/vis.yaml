@@ -1,0 +1,3 @@
+# Visual trace config
+enabled: true
+output_dir: artifacts/trace

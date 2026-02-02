@@ -1,0 +1,8 @@
+# YOLO-Doc training config example
+model: yolov8n.pt
+imgsz: 1280
+batch: 12
+epochs: 80
+device: cpu
+project: models
+name: yolo_doc

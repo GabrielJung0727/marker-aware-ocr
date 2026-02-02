@@ -1,0 +1,8 @@
+# Optional advanced text detection stack
+# Install only if you want PaddleOCR/CRAFT plugin path.
+# Note: paddlepaddle package varies by OS/CUDA, see official install guide if needed.
+
+paddleocr>=2.8
+# CRAFT package currently pins legacy opencv-python that breaks on Python 3.11+.
+# Enable CRAFT only on Python <=3.10 (or install from a custom fork manually).
+craft-text-detector>=0.4.3; python_version < "3.11"

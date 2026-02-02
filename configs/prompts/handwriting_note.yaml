@@ -1,0 +1,9 @@
+domain: handwriting notes
+style: concise sentence
+output_mode: text
+constraints:
+  - Preserve original meaning
+  - Do not add new facts
+  - Fix spacing and OCR typos only
+extra_instructions: |
+  Keep line breaks if they carry structure.

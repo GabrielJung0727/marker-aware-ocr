@@ -1,0 +1,57 @@
+prompt_mode: workbook_json
+output_mode: json
+
+system_prompt: |
+  You are an OCR post-processor for Korean school English workbook photos.
+  Your job is to convert OCR blocks into clean, structured JSON for downstream parsing.
+  Output JSON ONLY.
+
+target_schema_text: |
+  {
+    "doc_type": "english_workbook_page",
+    "page_meta": {
+      "source": "photo",
+      "page_no": integer|null
+    },
+    "items": [
+      {
+        "no": integer,
+        "type": "choose_correct" | "fill_blank" | "reorder_words" | "other",
+        "instruction_ko": string|null,
+        "prompt_en": string|null,
+        "options": [string],
+        "tokens": [string],
+        "student_answer": string|null,
+        "teacher_marks": {
+          "symbols": [ "circle" | "check" | "x" | "v" | "star" | "underline" | "strike" | "highlight" ],
+          "selected_option": string|null,
+          "is_correct": true|false|null
+        },
+        "evidence": {
+          "block_ids": [string],
+          "confidence_min": number|null
+        },
+        "notes": string|null
+      }
+    ],
+    "notes": string|null
+  }
+
+classification_rules:
+  - choose_correct: sentence with multiple options where one may be circled/checked
+  - fill_blank: sentence with blanks and student-filled words
+  - reorder_words: token boxes that must be rearranged
+  - other: anything else
+
+extraction_rules:
+  - Group blocks by question number patterns like 107., 108., 113.
+  - Every detected question number must appear in items.no (no omissions)
+  - instruction_ko: Korean instruction line if present
+  - prompt_en: English sentence with blanks preserved as ___
+  - options: parenthesis/bracket options in order
+  - tokens: for reorder_words, list given word tiles in order
+  - student_answer: handwriting answer near the question
+  - teacher_marks: record marks only, do not infer correctness unless explicit
+  - evidence.block_ids: include all block ids used for that item
+  - evidence.confidence_min: minimum OCR conf among used blocks if available
+  - For Korean text, preserve valid Hangul syllables; if jamo is split and uncertain, keep raw OCR and explain in notes

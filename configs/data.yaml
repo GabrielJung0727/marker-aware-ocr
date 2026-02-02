@@ -1,0 +1,16 @@
+# Dataset path policy
+# Set environment variable first (PowerShell): $env:DATA_ROOT='F:\data'
+data_root: ${DATA_ROOT}
+
+# This project uses document-level split files under workspace
+path: data
+train: splits/train.txt
+val: splits/val.txt
+test: splits/test.txt
+
+# Default class map (single-model baseline)
+names:
+  0: text_region
+  1: marker
+  2: option_block
+  3: formula_region
