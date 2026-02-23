@@ -40,6 +40,7 @@ Provide object-detection-like visibility for each OCR stage with replayable trac
 - `contour/aligned_char_boxes`
 - `contour/char_gallery`
 - `detect/combined`
+- `detect/easyocr_text_boxes`
 - `detect/paddle_text_boxes`
 - `detect/craft_text_boxes`
 - `detect/text_box_source`

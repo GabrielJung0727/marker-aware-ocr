@@ -139,6 +139,67 @@ def detect_with_paddle(image: Image.Image, cfg: dict) -> PluginDetections:
         return PluginDetections(boxes=[], errors=errors)
 
 
+def detect_with_easyocr(image: Image.Image, cfg: dict) -> PluginDetections:
+    errors: List[str] = []
+    try:
+        import easyocr
+    except Exception as exc:  # noqa: BLE001
+        return PluginDetections(boxes=[], errors=[f'easyocr_import_error: {exc}'])
+
+    try:
+        langs_cfg = cfg.get('langs', ['ko', 'en'])
+        if not isinstance(langs_cfg, list) or not langs_cfg:
+            langs_cfg = ['ko', 'en']
+        langs = [str(x) for x in langs_cfg]
+        gpu = bool(cfg.get('gpu', False))
+        verbose = bool(cfg.get('verbose', False))
+        min_conf = float(cfg.get('min_conf', 0.2))
+
+        reader = easyocr.Reader(langs, gpu=gpu, verbose=verbose)
+        np_img = np.array(image.convert('RGB'))
+        result = reader.readtext(np_img, detail=1, paragraph=False)
+
+        polygons: List[List[Tuple[float, float]]] = []
+        if isinstance(result, list):
+            for item in result:
+                if not isinstance(item, (list, tuple)) or len(item) < 2:
+                    continue
+                # easyocr item: [bbox, text, conf]
+                conf = None
+                if len(item) >= 3 and _is_number(item[2]):
+                    conf = float(item[2])
+                if conf is not None and conf < min_conf:
+                    continue
+
+                bbox = item[0]
+                if isinstance(bbox, np.ndarray):
+                    bbox = bbox.tolist()
+                if not isinstance(bbox, (list, tuple)):
+                    continue
+                poly: List[Tuple[float, float]] = []
+                for p in bbox:
+                    if (
+                        isinstance(p, (list, tuple))
+                        and len(p) >= 2
+                        and _is_number(p[0])
+                        and _is_number(p[1])
+                    ):
+                        poly.append((float(p[0]), float(p[1])))
+                if len(poly) >= 4:
+                    polygons.append(poly)
+
+        boxes = polygons_to_boxes(polygons, min_area=float(cfg.get('min_area', 20.0)))
+        boxes = clip_boxes(boxes, image.width, image.height)
+        boxes = nms_boxes(boxes, iou_threshold=float(cfg.get('iou_threshold', 0.4)))
+        max_boxes = int(cfg.get('max_boxes', 400))
+        if len(boxes) > max_boxes:
+            boxes = boxes[:max_boxes]
+        return PluginDetections(boxes=boxes, errors=errors)
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f'easyocr_detect_error: {exc}')
+        return PluginDetections(boxes=[], errors=errors)
+
+
 def detect_with_craft(image: Image.Image, cfg: dict) -> PluginDetections:
     errors: List[str] = []
     try:
@@ -182,6 +243,10 @@ def detect_text_boxes_with_plugins(image: Image.Image, cfg: dict) -> Dict[str, P
     paddle_cfg = plugins.get('paddle', {})
     if bool(paddle_cfg.get('enabled', False)):
         outputs['paddle'] = detect_with_paddle(image, paddle_cfg)
+
+    easyocr_cfg = plugins.get('easyocr', {})
+    if bool(easyocr_cfg.get('enabled', False)):
+        outputs['easyocr'] = detect_with_easyocr(image, easyocr_cfg)
 
     craft_cfg = plugins.get('craft', {})
     if bool(craft_cfg.get('enabled', False)):

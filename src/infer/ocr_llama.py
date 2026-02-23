@@ -161,7 +161,12 @@ def build_workbook_user_prompt(input_payload: dict, cfg: dict, fast_output: str 
     rule_block = '\n'.join(f'- {rule}' for rule in classification_rules)
     extract_block = '\n'.join(f'- {rule}' for rule in extraction_rules)
 
-    expected_nos = input_payload.get('expected_question_nos', []) or []
+    payload_for_dump = dict(input_payload or {})
+    cleanup_hints = payload_for_dump.pop('ocr_cleanup_hints', None)
+    if not isinstance(cleanup_hints, dict):
+        cleanup_hints = None
+
+    expected_nos = payload_for_dump.get('expected_question_nos', []) or []
     expected_text = ', '.join(str(n) for n in expected_nos)
 
     prompt = (
@@ -185,10 +190,20 @@ def build_workbook_user_prompt(input_payload: dict, cfg: dict, fast_output: str 
             f'{fast_output}\n\n'
             'Use the draft only as a hint. Fix errors and output final JSON only.\n\n'
         )
+    if cleanup_hints:
+        prompt += (
+            '### OCR cleanup hints (apply conservatively)\n'
+            '- Use rewrite_hints only when context clearly matches.\n'
+            '- Use token_replacements only when surrounding words support it.\n'
+            '- unresolved_lines/unresolved_tokens must be resolved only from nearby question context.\n'
+            '- Never paraphrase or rewrite options; keep OCR option candidates verbatim.\n'
+            '- If uncertain, keep raw OCR text and explain briefly in notes.\n'
+            f"{json.dumps(cleanup_hints, ensure_ascii=False, indent=2)}\n\n"
+        )
 
     prompt += (
         '### Input (ordered OCR blocks)\n'
-        f"{json.dumps(input_payload, ensure_ascii=False, indent=2)}\n"
+        f"{json.dumps(payload_for_dump, ensure_ascii=False, indent=2)}\n"
     )
     return prompt
 

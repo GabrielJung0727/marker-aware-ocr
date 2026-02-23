@@ -31,21 +31,30 @@
 - Key fields:
   - `engine`
   - `ensemble`
+  - `allow_missing_ensemble_engines`
+  - `min_available_ensemble_engines`
   - `routing.default_engine`
   - `routing.printed_engine`
   - `routing.handwritten_engine`
   - `routing.low_conf_threshold`
   - `routing.english_engine`, `routing.korean_engine`, `routing.mixed_engine`
+  - `enterprise.enabled`
+  - `enterprise.engines`
+  - `enterprise.conf_threshold` / `enterprise.noise_threshold`
+  - `enterprise.max_variants`
 
-## 4-1) PaddleOCR/CRAFT Text Detector Plugins
+## 4-1) EasyOCR/PaddleOCR/CRAFT Text Detector Plugins
 - Config section: `configs/pipeline.yaml > text_detection`
 - Stage examples in trace:
+  - `detect/easyocr_text_boxes`
   - `detect/paddle_text_boxes`
   - `detect/craft_text_boxes`
   - `detect/text_box_source`
 - Compatibility note:
+  - EasyOCR plugin works with the default `requirements.txt` and is the safest baseline.
+  - If Paddle backend (`paddle`) is missing, disable `plugins.paddle` and keep `plugins.easyocr=true`.
   - `craft-text-detector` is unstable on Python 3.11+ due to legacy OpenCV pin.
-  - On Python 3.11+, use PaddleOCR plugin first (`plugins.paddle.enabled=true`, `plugins.craft.enabled=false`).
+  - On Python 3.11+, keep CRAFT disabled unless you verified a compatible fork/build.
 
 ## 5) Prompt Template and Llama Output
 - Main config: `configs/ollama.yaml`
@@ -76,5 +85,10 @@
 - If text is erased under red pen, use `red_ink.strategy=preserve_text` and tune `red_ink.keep_dark_threshold`.
 - If contour boxes are too noisy, raise `char_visualization.min_area` or lower `max_area_ratio`.
 - Option parse empty: verify class name `option_block` exists.
-- Marker occlusion ineffective: set `marker.use_masking=true`, `marker.use_inpaint=true`.
+- If marker-over-text causes letter deformation, use crop masking with:
+  - `marker.strategy=preserve_text`
+  - `marker.keep_dark_threshold` tuning (e.g. 145~170)
+  - `marker.preserve_source_min_ratio=0.9` (or higher)
+  - `marker.preserve_source_similarity_min` / `marker.preserve_source_conf_margin` to force original text when red-clean output diverges too much
 - Slow first run: EasyOCR/TrOCR may download model weights.
+- Enterprise mode can be slower because it performs multi-engine + multi-variant retries on low-quality boxes.

@@ -9,7 +9,7 @@ trace:
   output_dir: artifacts/trace
 
 # OCR settings file
-ocr_config: configs/ocr.yaml
+ocr_config: configs/ocr_enterprise_eval.yaml
 
 # detection fallback when generic YOLO has no text-like classes
 fallback:
@@ -158,4 +158,5 @@ option:
   final_mark_priority: [X, O, V, CHECK, STAR]
 
 ollama:
-  config: configs/ollama.yaml
+  config: configs/ollama_fastfail.yaml
+

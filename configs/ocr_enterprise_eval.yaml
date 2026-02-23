@@ -33,12 +33,13 @@ routing:
 # It runs extra engine/variant retries on low-confidence or noisy boxes.
 enterprise:
   enabled: true
-  force_all_regions: true
+  force_all_regions: false
   conf_threshold: 0.84
   noise_threshold: 0.9
   engines: [ensemble, paddleocr, easyocr, tesseract_kor_eng, trocr]
-  max_variants: 5
+  max_variants: 3
   use_clahe: true
   use_adaptive: true
   use_otsu: true
   use_sharpen: true
+

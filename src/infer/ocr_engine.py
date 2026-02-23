@@ -25,6 +25,8 @@ class OcrOptions:
     paddle_lang: str = 'korean'
     paddle_use_angle_cls: bool = True
     paddle_use_gpu: bool = False
+    allow_missing_ensemble_engines: bool = True
+    min_available_ensemble_engines: int = 1
 
 
 @dataclass
@@ -46,13 +48,14 @@ class BaseOcrEngine:
         started = perf_counter()
         text = self._infer_text(image)
         latency_ms = (perf_counter() - started) * 1000.0
-        conf = score_to_confidence(score_text(text))
+        text_score = score_text(text)
+        conf = score_to_confidence(text_score)
         return OcrResult(
             text=text.strip(),
             conf=conf,
             engine=self.name,
             latency_ms=latency_ms,
-            evidence={'score': score_text(text)},
+            evidence={'score': text_score},
         )
 
     def read_many(self, images: Sequence[Image.Image]) -> List[str]:
@@ -101,6 +104,60 @@ class TesseractOcrEngine(BaseOcrEngine):
                 'Check language packs (e.g. kor, eng) and Tesseract installation.'
             ) from exc
 
+    def read_image_result(self, image: Image.Image) -> OcrResult:
+        started = perf_counter()
+        config = f"--psm {self.options.psm} --oem {self.options.oem}"
+        conf_values: List[float] = []
+        try:
+            text = pytesseract.image_to_string(image, lang=self.options.lang, config=config)
+            try:
+                data = pytesseract.image_to_data(
+                    image,
+                    lang=self.options.lang,
+                    config=config,
+                    output_type=pytesseract.Output.DICT,
+                )
+                raw_conf = data.get('conf', []) if isinstance(data, dict) else []
+                for c in raw_conf:
+                    try:
+                        value = float(c)
+                    except (TypeError, ValueError):
+                        continue
+                    if value >= 0.0:
+                        conf_values.append(value / 100.0)
+            except Exception:
+                # Keep OCR result even if detailed confidence extraction fails.
+                conf_values = []
+        except TesseractNotFoundError as exc:
+            raise RuntimeError(
+                'Tesseract OCR is not installed. '
+                'Install Tesseract executable and add it to PATH.'
+            ) from exc
+        except TesseractError as exc:
+            raise RuntimeError(
+                f'Tesseract failed (lang={self.options.lang}). '
+                'Check language packs (e.g. kor, eng) and Tesseract installation.'
+            ) from exc
+
+        latency_ms = (perf_counter() - started) * 1000.0
+        text_score = score_text(text)
+        heuristic_conf = score_to_confidence(text_score)
+        native_conf = (sum(conf_values) / len(conf_values)) if conf_values else None
+        conf = merge_confidence(heuristic_conf, native_conf)
+        evidence: Dict[str, Any] = {
+            'score': text_score,
+            'heuristic_conf': round(heuristic_conf, 4),
+            'native_conf': round(native_conf, 4) if native_conf is not None else None,
+            'native_word_count': len(conf_values),
+        }
+        return OcrResult(
+            text=text.strip(),
+            conf=conf,
+            engine=self.name,
+            latency_ms=latency_ms,
+            evidence=evidence,
+        )
+
 
 class EasyOcrEngine(BaseOcrEngine):
     name = 'easyocr'
@@ -124,6 +181,53 @@ class EasyOcrEngine(BaseOcrEngine):
         if isinstance(results, list):
             return '\n'.join([str(r).strip() for r in results if str(r).strip()])
         return str(results).strip()
+
+    def read_image_result(self, image: Image.Image) -> OcrResult:
+        import numpy as np
+
+        started = perf_counter()
+        np_img = np.array(image.convert('RGB'))
+        result = self.reader.readtext(np_img, detail=1, paragraph=False)
+
+        lines: List[str] = []
+        native_values: List[float] = []
+        if isinstance(result, list):
+            for item in result:
+                if not isinstance(item, (list, tuple)) or len(item) < 2:
+                    continue
+                txt = str(item[1]).strip()
+                if txt:
+                    lines.append(txt)
+                if len(item) >= 3:
+                    try:
+                        conf = float(item[2])
+                        if conf >= 0.0:
+                            native_values.append(conf)
+                    except (TypeError, ValueError):
+                        continue
+
+        if not lines:
+            text = self._infer_text(image)
+        else:
+            text = '\n'.join(lines)
+
+        latency_ms = (perf_counter() - started) * 1000.0
+        text_score = score_text(text)
+        heuristic_conf = score_to_confidence(text_score)
+        native_conf = (sum(native_values) / len(native_values)) if native_values else None
+        conf = merge_confidence(heuristic_conf, native_conf)
+        return OcrResult(
+            text=text.strip(),
+            conf=conf,
+            engine=self.name,
+            latency_ms=latency_ms,
+            evidence={
+                'score': text_score,
+                'heuristic_conf': round(heuristic_conf, 4),
+                'native_conf': round(native_conf, 4) if native_conf is not None else None,
+                'native_line_count': len(native_values),
+            },
+        )
 
 
 class TrOcrEngine(BaseOcrEngine):
@@ -204,6 +308,59 @@ class PaddleOcrEngine(BaseOcrEngine):
                     if txt:
                         lines.append(txt)
         return '\n'.join(lines)
+
+    def read_image_result(self, image: Image.Image) -> OcrResult:
+        import numpy as np
+
+        started = perf_counter()
+        np_img = np.array(image.convert('RGB'))
+        try:
+            result = self.reader.ocr(np_img, cls=self.options.paddle_use_angle_cls)
+        except TypeError:
+            result = self.reader.ocr(np_img)
+
+        lines: List[str] = []
+        native_values: List[float] = []
+        if isinstance(result, list):
+            for item in result:
+                if not isinstance(item, list):
+                    continue
+                for line in item:
+                    if (
+                        isinstance(line, (list, tuple))
+                        and len(line) >= 2
+                        and isinstance(line[1], (list, tuple))
+                        and len(line[1]) >= 1
+                    ):
+                        txt = str(line[1][0]).strip()
+                        if txt:
+                            lines.append(txt)
+                        if len(line[1]) >= 2:
+                            try:
+                                conf = float(line[1][1])
+                                if conf >= 0.0:
+                                    native_values.append(conf)
+                            except (TypeError, ValueError):
+                                continue
+
+        text = '\n'.join(lines)
+        latency_ms = (perf_counter() - started) * 1000.0
+        text_score = score_text(text)
+        heuristic_conf = score_to_confidence(text_score)
+        native_conf = (sum(native_values) / len(native_values)) if native_values else None
+        conf = merge_confidence(heuristic_conf, native_conf)
+        return OcrResult(
+            text=text.strip(),
+            conf=conf,
+            engine=self.name,
+            latency_ms=latency_ms,
+            evidence={
+                'score': text_score,
+                'heuristic_conf': round(heuristic_conf, 4),
+                'native_conf': round(native_conf, 4) if native_conf is not None else None,
+                'native_line_count': len(native_values),
+            },
+        )
 
 
 class EnsembleOcrEngine(BaseOcrEngine):
@@ -287,6 +444,15 @@ def score_to_confidence(score: float) -> float:
     return max(0.01, min(0.99, conf))
 
 
+def merge_confidence(heuristic_conf: float, native_conf: float | None) -> float:
+    if native_conf is None:
+        return max(0.01, min(0.99, heuristic_conf))
+    bounded_native = max(0.0, min(1.0, native_conf))
+    # Prefer engine-native confidence while retaining lightweight text-quality prior.
+    merged = (0.65 * bounded_native) + (0.35 * heuristic_conf)
+    return max(0.01, min(0.99, merged))
+
+
 def pick_best_text(candidates: Sequence[str]) -> str:
     if not candidates:
         return ''
@@ -318,8 +484,20 @@ def build_ocr_engine(engine: str, options: OcrOptions, ensemble: List[str] | Non
     if engine in {'paddleocr', 'paddle'}:
         return PaddleOcrEngine(options)
     if engine == 'ensemble':
-        engines = []
+        engines: List[BaseOcrEngine] = []
+        errors: List[str] = []
         for name in (ensemble or ['tesseract', 'easyocr']):
-            engines.append(build_ocr_engine(name, options))
+            try:
+                engines.append(build_ocr_engine(name, options))
+            except Exception as exc:  # noqa: BLE001
+                if not bool(options.allow_missing_ensemble_engines):
+                    raise
+                errors.append(f'{name}: {exc}')
+        min_required = max(1, int(options.min_available_ensemble_engines))
+        if len(engines) < min_required:
+            detail = '; '.join(errors) if errors else 'no engines available'
+            raise RuntimeError(
+                f'Ensemble requires at least {min_required} available engines; got {len(engines)} ({detail})'
+            )
         return EnsembleOcrEngine(engines)
     raise ValueError(f'Unknown OCR engine: {engine}')

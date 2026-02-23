@@ -32,17 +32,28 @@ def mask_or_inpaint_crop(
     text_box: Box,
     marker_boxes: Iterable[Box],
     *,
+    strategy: str = 'preserve_text',
     use_inpaint: bool = True,
     inpaint_radius: int = 3,
+    morph_kernel: int = 1,
+    keep_dark_threshold: int = 150,
+    saturation_min: int = 70,
+    value_min: int = 35,
 ) -> Image.Image:
-    """Apply marker masking to a text crop and optionally inpaint masked pixels."""
+    """
+    Apply marker suppression inside a crop.
+
+    Important: do NOT erase full marker rectangles because that destroys overlapped
+    characters. We first detect red-ish pixels and only process those pixels within
+    marker regions.
+    """
     markers = markers_in_text_box(text_box, marker_boxes)
     if not markers:
         return crop_image
 
-    crop_rgb = np.array(crop_image)
+    crop_rgb = np.array(crop_image.convert('RGB'))
     crop_bgr = cv2.cvtColor(crop_rgb, cv2.COLOR_RGB2BGR)
-    mask = np.zeros(crop_bgr.shape[:2], dtype=np.uint8)
+    region_mask = np.zeros(crop_bgr.shape[:2], dtype=np.uint8)
 
     tx1, ty1, tx2, ty2 = text_box
     crop_w = max(1, int(tx2 - tx1))
@@ -55,10 +66,43 @@ def mask_or_inpaint_crop(
         ry2 = min(crop_h, int(my2 - ty1))
         if rx2 <= rx1 or ry2 <= ry1:
             continue
-        cv2.rectangle(mask, (rx1, ry1), (rx2, ry2), 255, thickness=-1)
+        cv2.rectangle(region_mask, (rx1, ry1), (rx2, ry2), 255, thickness=-1)
 
-    if use_inpaint:
-        processed = cv2.inpaint(crop_bgr, mask, inpaint_radius, cv2.INPAINT_TELEA)
+    if not np.any(region_mask > 0):
+        return crop_image
+
+    red_mask = build_red_ink_mask(crop_rgb, saturation_min=saturation_min, value_min=value_min)
+    mask = cv2.bitwise_and(red_mask, region_mask)
+
+    k = max(1, int(morph_kernel))
+    if k > 1:
+        kernel = np.ones((k, k), np.uint8)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_DILATE, kernel)
+
+    if not np.any(mask > 0):
+        return crop_image
+
+    strategy = str(strategy).lower()
+    if strategy == 'inpaint':
+        if use_inpaint:
+            processed = cv2.inpaint(crop_bgr, mask, max(1, int(inpaint_radius)), cv2.INPAINT_TELEA)
+        else:
+            processed = crop_bgr.copy()
+            processed[mask > 0] = (255, 255, 255)
+    elif strategy == 'preserve_text':
+        g = crop_rgb[:, :, 1]
+        b = crop_rgb[:, :, 2]
+        gb_min = np.minimum(g, b)
+        text_like = gb_min < int(keep_dark_threshold)
+
+        processed_rgb = crop_rgb.copy()
+        processed_rgb[mask > 0] = (255, 255, 255)
+
+        replacement = np.stack([gb_min, gb_min, gb_min], axis=-1).astype(np.uint8)
+        keep_idx = (mask > 0) & text_like
+        processed_rgb[keep_idx] = replacement[keep_idx]
+        processed = cv2.cvtColor(processed_rgb, cv2.COLOR_RGB2BGR)
     else:
         processed = crop_bgr.copy()
         processed[mask > 0] = (255, 255, 255)

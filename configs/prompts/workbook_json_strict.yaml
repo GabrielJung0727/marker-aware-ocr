@@ -49,9 +49,13 @@ extraction_rules:
   - instruction_ko: Korean instruction line if present
   - prompt_en: English sentence with blanks preserved as ___
   - options: parenthesis/bracket options in order
+  - options/tokens must preserve question_chunks.option_candidates verbatim (no paraphrase or rewrite)
   - tokens: for reorder_words, list given word tiles in order
   - student_answer: handwriting answer near the question
   - teacher_marks: record marks only, do not infer correctness unless explicit
   - evidence.block_ids: include all block ids used for that item
   - evidence.confidence_min: minimum OCR conf among used blocks if available
+  - Use ocr_cleanup_hints.rewrite_hints and token_replacements only when context matches; if uncertain keep raw OCR text
+  - For ocr_cleanup_hints.unresolved_lines/unresolved_tokens, infer only from nearby block context and never hallucinate
+  - Do not invent unseen words/sentences; apply normalization conservatively
   - For Korean text, preserve valid Hangul syllables; if jamo is split and uncertain, keep raw OCR and explain in notes
